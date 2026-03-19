@@ -1698,21 +1698,31 @@ function _renderTutStep() {
 
   // --- 定位卡片 ---
   const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  const MARGIN = 14;
   const cardW = Math.min(300, vw - 28);
   let leftPos = r.left + r.width / 2 - cardW / 2;
-  leftPos = Math.max(14, Math.min(leftPos, vw - cardW - 14));
+  leftPos = Math.max(MARGIN, Math.min(leftPos, vw - cardW - MARGIN));
   card.style.width = cardW + 'px';
   card.style.left  = leftPos + 'px';
 
+  // 先让卡片脱离流量确保可量高，再夹紧上下边界
+  const cardH = card.offsetHeight;
+
   if (step.tip === 'below') {
-    // 卡片在目标下方
-    card.style.top    = (r.bottom + PAD + GAP) + 'px';
+    // 卡片在目标下方，夹紧保证底部不出界
+    let topPos = r.bottom + PAD + GAP;
+    topPos = Math.min(topPos, vh - cardH - MARGIN);
+    topPos = Math.max(MARGIN, topPos);
+    card.style.top    = topPos + 'px';
     card.style.bottom = 'auto';
   } else {
-    // 卡片在目标上方：用 bottom 锚定，避免需要量高度
-    const distFromBottom = window.innerHeight - (r.top - PAD - GAP);
-    card.style.bottom = distFromBottom + 'px';
-    card.style.top    = 'auto';
+    // 卡片在目标上方，夹紧保证顶部不出界
+    let topPos = r.top - PAD - GAP - cardH;
+    topPos = Math.max(MARGIN, topPos);
+    topPos = Math.min(topPos, vh - cardH - MARGIN);
+    card.style.top    = topPos + 'px';
+    card.style.bottom = 'auto';
   }
 }
 
