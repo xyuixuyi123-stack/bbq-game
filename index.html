@@ -336,11 +336,15 @@ html,body{width:100%;height:100%;overflow:hidden;
   border:2px solid var(--accent);
   padding:8px 12px;
   display:flex;align-items:center;gap:10px;
-  cursor:grab;user-select:none;
+  cursor:pointer;user-select:none;
   -webkit-user-select:none;
-  touch-action:none;
+  touch-action:manipulation;
   box-shadow:0 4px 20px rgba(255,45,120,.22),inset 0 1px 0 rgba(255,180,255,.1)}
-.plate-box:active{cursor:grabbing}
+.plate-box:active{opacity:.85}
+.plate-box.serving-active{
+  border-color:var(--gold);
+  box-shadow:0 0 22px rgba(255,224,102,.55),0 4px 20px rgba(255,45,120,.22);
+  animation:card-pulse 1s ease-in-out infinite}
 .plate-section.has-food{min-height:72px}
 .plate-section.has-food .plate-box{
   background:rgba(10,5,24,.72);
@@ -836,13 +840,13 @@ html,body{width:100%;height:100%;overflow:hidden;
   <!-- Grill -->
   <div class="grill-section">
     <div class="grill-bg"></div>
-    <div class="grill-section-title">🔥 烧烤架（点选格子→撒调料→再次点击取下→拖给顾客）</div>
+    <div class="grill-section-title">🔥 烧烤架（点选格子→撒调料→再次点击取下→点击顾客上菜）</div>
     <div class="grill-grid" id="grill-grid"></div>
   </div>
 
   <!-- In-hand plate -->
   <div class="plate-section" id="plate-section">
-    <div class="plate-hint" id="plate-hint">取下烤好的食物后，按住拖拽到顾客处上菜</div>
+    <div class="plate-hint" id="plate-hint">取下烤好的食物后，点击食物卡片，再点击顾客上菜</div>
     <div id="plate-box" style="display:none"></div>
   </div>
 
@@ -1208,9 +1212,9 @@ function pickUpFromGrill(idx) {
   vibrate(18);
 
   if (stage < 2) {
-    showToast(`⚠️ ${FOODS[slot.foodId].name}还没全熟，拖给顾客会不满意！`);
+    showToast(`⚠️ ${FOODS[slot.foodId].name}还没全熟，上给顾客会不满意！`);
   } else {
-    showToast('✅ 食材拿到手了！按住拖拽到顾客处上菜');
+    showToast('✅ 食材拿到手了！点击食物卡片，再点顾客上菜');
   }
   renderGame();
 }
@@ -1493,7 +1497,7 @@ function renderPlate() {
   ).join('');
 
   box.innerHTML = `
-    <div class="plate-box" id="plate-box-inner">
+    <div class="plate-box" id="plate-box-inner" onclick="toggleServingMode()">
       <div class="plate-food-icon">${foodImgTag(food.id, stage)}</div>
       <div class="plate-meta">
         <div class="plate-food-name">${food.name}</div>
@@ -1502,9 +1506,9 @@ function renderPlate() {
         </span>
       </div>
       <div class="plate-conds">${condTags || '<span style="font-size:.65rem;color:var(--muted)">未加调料</span>'}</div>
-      <button class="plate-discard" onclick="discardPlate()">丢弃</button>
+      <button class="plate-discard" onclick="event.stopPropagation();discardPlate()">丢弃</button>
     </div>
-    <div class="plate-instruct">👆 按住食物，拖拽到顾客处上菜</div>
+    <div class="plate-instruct">👆 点击食物，再点顾客上菜</div>
   `;
 }
 
@@ -1687,8 +1691,8 @@ const TUT_STEPS = [
   },
   {
     badge: '第 4 步 · 共 4 步',
-    title: '④ 拖给顾客上菜',
-    text: '食物全熟 + 调料撒好后，再次点击格子把食物取到手中。底部出现食物卡片后，<strong>按住食物卡片拖拽到顾客头像上</strong>即可上菜！<br><br>💡 顾客的耐心值会倒计时，手脚要快哦～',
+    title: '④ 点击顾客上菜',
+    text: '食物全熟 + 调料撒好后，再次点击格子把食物取到手中。底部出现食物卡片后，<strong>点击食物卡片选中，再点击顾客头像</strong>即可上菜！<br><br>💡 顾客的耐心值会倒计时，手脚要快哦～',
     getRect: () => document.querySelector('.cust-section').getBoundingClientRect(),
     tip: 'below',
   },
@@ -1779,70 +1783,69 @@ function tutNext() {
 }
 
 /* ══════════════════════════════════════
-   DRAG TO SERVE
+   CLICK TO SERVE
 ══════════════════════════════════════ */
-let dragState = null;
+let servingMode = false;
 
-function setupDragServe() {
-  const ps = document.getElementById('plate-section');
+function enterServingMode() {
+  servingMode = true;
+  const inner = document.getElementById('plate-box-inner');
+  if (inner) {
+    inner.classList.add('serving-active');
+    const inst = inner.parentElement.querySelector('.plate-instruct');
+    if (inst) inst.textContent = '👆 已选中！点击顾客头像上菜';
+  }
+  document.querySelectorAll('.cust-card:not(.served)').forEach(c =>
+    c.classList.add('drag-target'));
+}
 
-  ps.addEventListener('touchstart', e => {
-    if (!G || !G.plate) return;
-    // 必须从 plate-box 内部开始拖拽
-    const inner = document.getElementById('plate-box-inner');
-    if (!inner) return;
-    const rect = inner.getBoundingClientRect();
-    const t = e.touches[0];
-    if (t.clientX < rect.left || t.clientX > rect.right ||
-        t.clientY < rect.top  || t.clientY > rect.bottom) return;
+function exitServingMode() {
+  servingMode = false;
+  const inner = document.getElementById('plate-box-inner');
+  if (inner) {
+    inner.classList.remove('serving-active');
+    const inst = inner.parentElement.querySelector('.plate-instruct');
+    if (inst) inst.textContent = '👆 点击食物，再点顾客上菜';
+  }
+  document.querySelectorAll('.cust-card').forEach(c =>
+    c.classList.remove('drag-target'));
+}
 
-    // 触摸目标是丢弃按钮，不拦截，让 onclick 正常触发
-    if (e.target.closest('.plate-discard')) return;
-
-    e.preventDefault();
-    const ghost = document.getElementById('drag-ghost');
-    ghost.innerHTML = foodImgTag(G.plate.foodId, G.plate.stage);
-    ghost.style.left = t.clientX + 'px';
-    ghost.style.top  = t.clientY + 'px';
-    ghost.style.display = 'block';
-    dragState = { active: true };
-
-    // 高亮可服务的顾客卡片
-    document.querySelectorAll('.cust-card:not(.served)').forEach(c =>
-      c.classList.add('drag-target'));
-  }, { passive: false });
-
-  document.addEventListener('touchmove', e => {
-    if (!dragState) return;
-    e.preventDefault();
-    const t = e.touches[0];
-    const ghost = document.getElementById('drag-ghost');
-    ghost.style.left = t.clientX + 'px';
-    ghost.style.top  = t.clientY + 'px';
-  }, { passive: false });
-
-  document.addEventListener('touchend', e => {
-    if (!dragState) return;
-    document.getElementById('drag-ghost').style.display = 'none';
-    document.querySelectorAll('.cust-card').forEach(c =>
-      c.classList.remove('drag-target'));
-
-    const t = e.changedTouches[0];
-    const el = document.elementFromPoint(t.clientX, t.clientY);
-    if (el) {
-      const card = el.closest('.cust-card');
-      if (card) {
-        const custId = parseInt(card.id.replace('cust-card-', ''), 10);
-        if (!isNaN(custId)) serveCustomer(custId);
-      }
+function setupClickServe() {
+  // 点击顾客卡片上菜
+  document.querySelector('.cust-section').addEventListener('click', e => {
+    if (!servingMode) return;
+    const card = e.target.closest('.cust-card:not(.served)');
+    if (!card) {
+      exitServingMode();
+      return;
     }
-    dragState = null;
+    const custId = parseInt(card.id.replace('cust-card-', ''), 10);
+    if (!isNaN(custId)) serveCustomer(custId);
+    exitServingMode();
   });
+
+  // 点击空白区域取消选中
+  document.addEventListener('click', e => {
+    if (!servingMode) return;
+    if (e.target.closest('#plate-box-inner') || e.target.closest('.cust-section')) return;
+    exitServingMode();
+  });
+}
+
+// plate-box 点击由 renderPlate 动态绑定，通过全局 toggleServingMode 触发
+function toggleServingMode() {
+  if (!G || !G.plate) return;
+  if (servingMode) {
+    exitServingMode();
+  } else {
+    enterServingMode();
+  }
 }
 
 /* ── Init ── */
 refreshStars();
-setupDragServe();
+setupClickServe();
 </script>
 </body>
 </html>
